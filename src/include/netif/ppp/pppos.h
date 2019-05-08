@@ -99,7 +99,15 @@ ppp_pcb *pppos_create(struct netif *pppif, pppos_output_cb_fn output_cb,
 
 #if !NO_SYS && !PPP_INPROC_IRQ_SAFE
 /* Pass received raw characters to PPPoS to be decoded through lwIP TCPIP thread. */
+#ifdef __cplusplus  // ES1902-03
+extern "C" {
+#endif
+
 err_t pppos_input_tcpip(ppp_pcb *ppp, u8_t *s, int l);
+
+#ifdef __cplusplus  // ES1902-03
+}
+#endif
 #endif /* !NO_SYS && !PPP_INPROC_IRQ_SAFE */
 
 /* PPP over Serial: this is the input function to be called for received data. */
