@@ -351,8 +351,8 @@ ip_reass_chain_frag_into_datagram_and_validate(struct ip_reassdata *ipr, struct 
 
   /* Extract length and fragment offset from current fragment */
   fraghdr = (struct ip_hdr*)new_p->payload;
-  len = (u16_t)(lwip_ntohs(IPH_LEN(fraghdr)) - IPH_HL(fraghdr) * 4);
-  offset = (u16_t)((lwip_ntohs(IPH_OFFSET(fraghdr)) & IP_OFFMASK) * 8);
+  len = lwip_ntohs(IPH_LEN(fraghdr)) - IPH_HL(fraghdr) * 4;
+  offset = (lwip_ntohs(IPH_OFFSET(fraghdr)) & IP_OFFMASK) * 8;
 
   /* overwrite the fragment's ip header from the pbuf with our helper struct,
    * and setup the embedded helper structure. */
@@ -362,11 +362,7 @@ ip_reass_chain_frag_into_datagram_and_validate(struct ip_reassdata *ipr, struct 
   iprh = (struct ip_reass_helper*)new_p->payload;
   iprh->next_pbuf = NULL;
   iprh->start = offset;
-  iprh->end = (u16_t)(offset + len);
-  if (iprh->end < offset) {
-    /* u16_t overflow, cannot handle this */
-    return IP_REASS_VALIDATE_PBUF_DROPPED;
-  }
+  iprh->end = offset + len;
 
   /* Iterate through until we either get to the end of the list (append),
    * or we find one with a larger offset (insert). */
@@ -380,7 +376,7 @@ ip_reass_chain_frag_into_datagram_and_validate(struct ip_reassdata *ipr, struct 
 #if IP_REASS_CHECK_OVERLAP
         if ((iprh->start < iprh_prev->end) || (iprh->end > iprh_tmp->start)) {
           /* fragment overlaps with previous or following, throw away */
-          return IP_REASS_VALIDATE_PBUF_DROPPED;
+          goto freepbuf;
         }
 #endif /* IP_REASS_CHECK_OVERLAP */
         iprh_prev->next_pbuf = new_p;
@@ -393,7 +389,7 @@ ip_reass_chain_frag_into_datagram_and_validate(struct ip_reassdata *ipr, struct 
 #if IP_REASS_CHECK_OVERLAP
         if (iprh->end > iprh_tmp->start) {
           /* fragment overlaps with following, throw away */
-          return IP_REASS_VALIDATE_PBUF_DROPPED;
+          goto freepbuf;
         }
 #endif /* IP_REASS_CHECK_OVERLAP */
         /* fragment with the lowest offset */
@@ -402,11 +398,11 @@ ip_reass_chain_frag_into_datagram_and_validate(struct ip_reassdata *ipr, struct 
       break;
     } else if (iprh->start == iprh_tmp->start) {
       /* received the same datagram twice: no need to keep the datagram */
-      return IP_REASS_VALIDATE_PBUF_DROPPED;
+      goto freepbuf;
 #if IP_REASS_CHECK_OVERLAP
     } else if (iprh->start < iprh_tmp->end) {
       /* overlap: no need to keep the new datagram */
-      return IP_REASS_VALIDATE_PBUF_DROPPED;
+      goto freepbuf;
 #endif /* IP_REASS_CHECK_OVERLAP */
     } else {
       /* Check if the fragments received so far have no holes. */
@@ -484,6 +480,12 @@ ip_reass_chain_frag_into_datagram_and_validate(struct ip_reassdata *ipr, struct 
   }
   /* If we come here, not all fragments were received, yet! */
   return IP_REASS_VALIDATE_PBUF_QUEUED; /* not yet valid! */
+#if IP_REASS_CHECK_OVERLAP
+freepbuf:
+  ip_reass_pbufcount -= pbuf_clen(new_p);
+  pbuf_free(new_p);
+  return IP_REASS_VALIDATE_PBUF_DROPPED;
+#endif /* IP_REASS_CHECK_OVERLAP */
 }
 
 /**

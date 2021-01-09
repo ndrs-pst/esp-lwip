@@ -1393,12 +1393,6 @@ dhcp_reboot(struct netif *netif)
       dhcp_option_byte(dhcp, dhcp_discover_request_options[i]);
     }
 
-#if ESP_DHCP
-#if LWIP_NETIF_HOSTNAME
-    dhcp_option_hostname(dhcp, netif);
-#endif /* LWIP_NETIF_HOSTNAME */
-#endif /* ESP_DHCP */
-
     dhcp_option_trailer(dhcp);
 
     pbuf_realloc(dhcp->p_out, sizeof(struct dhcp_msg) - DHCP_OPTIONS_LEN + dhcp->options_out_len);
@@ -1648,8 +1642,8 @@ dhcp_parse_reply(struct dhcp *dhcp, struct pbuf *p)
 again:
   q = p;
   while ((q != NULL) && (options_idx >= q->len)) {
-    options_idx = (u16_t)(options_idx - q->len);
-    options_idx_max = (u16_t)(options_idx_max - q->len);
+    options_idx -= q->len;
+    options_idx_max -= q->len;
     q = q->next;
   }
   if (q == NULL) {
@@ -1664,11 +1658,7 @@ again:
     u8_t len;
     u8_t decode_len = 0;
     int decode_idx = -1;
-    u16_t val_offset = (u16_t)(offset + 2);
-    if (val_offset < offset) {
-      /* overflow */
-      return ERR_BUF;
-    }
+    u16_t val_offset = offset + 2;
     /* len byte might be in the next pbuf */
     if ((offset + 1) < q->len) {
       len = options[offset + 1];
@@ -1745,11 +1735,7 @@ again:
         LWIP_DEBUGF(DHCP_DEBUG, ("skipping option %"U16_F" in options\n", (u16_t)op));
         break;
     }
-    if ((u32_t)(offset + len + 2) > 0xFFFF) {
-      /* overflow */
-      return ERR_BUF;
-    }
-    offset = (u16_t)(offset + len + 2);
+    offset += len + 2;
     if (decode_len > 0) {
       u32_t value = 0;
       u16_t copy_len;
@@ -1762,17 +1748,11 @@ decode_next:
         }
         if (decode_len > 4) {
           /* decode more than one u32_t */
-          u16_t next_val_offset;
           LWIP_ERROR("decode_len %% 4 == 0", decode_len % 4 == 0, return ERR_VAL;);
           dhcp_got_option(dhcp, decode_idx);
           dhcp_set_option_value(dhcp, decode_idx, lwip_htonl(value));
-          decode_len = (u8_t)(decode_len - 4);
-          next_val_offset = (u16_t)(val_offset + 4);
-          if (next_val_offset < val_offset) {
-            /* overflow */
-            return ERR_BUF;
-          }
-          val_offset = next_val_offset;
+          decode_len -= 4;
+          val_offset += 4;
           decode_idx++;
           goto decode_next;
         } else if (decode_len == 4) {
@@ -1786,8 +1766,8 @@ decode_next:
       }
     }
     if (offset >= q->len) {
-      offset = (u16_t)(offset - q->len);
-      offset_max = (u16_t)(offset_max - q->len);
+      offset -= q->len;
+      offset_max -= q->len;
       if ((offset < offset_max) && offset_max) {
         q = q->next;
         LWIP_ERROR("next pbuf was null", q != NULL, return ERR_VAL;);

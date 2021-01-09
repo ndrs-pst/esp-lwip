@@ -845,9 +845,15 @@ tcp_new_port(void)
   struct tcp_pcb *pcb;
 
 again:
+
+#if ESP_RANDOM_TCP_PORT
+  tcp_port = abs(LWIP_RAND()) % (TCP_LOCAL_PORT_RANGE_END - TCP_LOCAL_PORT_RANGE_START);
+  tcp_port += TCP_LOCAL_PORT_RANGE_START;
+#else
   if (tcp_port++ == TCP_LOCAL_PORT_RANGE_END) {
     tcp_port = TCP_LOCAL_PORT_RANGE_START;
   }
+#endif
 
   /* Check all PCB lists. */
   for (i = 0; i < NUM_TCP_PCB_LISTS; i++) {
@@ -1709,14 +1715,8 @@ tcp_alloc(u8_t prio)
     /* As initial send MSS, we use TCP_MSS but limit it to 536.
        The send MSS is updated when an MSS option is received. */
     pcb->mss = INITIAL_MSS;
-#if ESP_LWIP
-    /* make TCP's retransmission time to be configurable */
-    pcb->rto = LWIP_TCP_RTO_TIME / TCP_SLOW_INTERVAL;
-    pcb->sv = LWIP_TCP_RTO_TIME / TCP_SLOW_INTERVAL;
-#else
     pcb->rto = 3000 / TCP_SLOW_INTERVAL;
     pcb->sv = 3000 / TCP_SLOW_INTERVAL;
-#endif
     pcb->rtime = -1;
     pcb->cwnd = 1;
     pcb->tmr = tcp_ticks;
